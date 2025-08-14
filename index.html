@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HelixAI - AI-Powered FASTA Parser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+            overflow: hidden; /* Prevent scrollbars during transitions */
+        }
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
+        }
+        .card {
+            background-color: rgba(31, 41, 55, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+        }
+        .fade-in { animation: fadeIn 0.8s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-out { animation: fadeOut 0.8s ease-in-out forwards; }
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .helix-logo {
+            animation: rotateLogo 25s linear infinite;
+            transform-origin: center;
+        }
+        .base-pair {
+            animation: pulseBasePair 2s ease-in-out infinite alternate;
+        }
+        .base-pair:nth-of-type(2) { animation-delay: 0.2s; }
+        .base-pair:nth-of-type(3) { animation-delay: 0.4s; }
+        .base-pair:nth-of-type(4) { animation-delay: 0.6s; }
+        .base-pair:nth-of-type(5) { animation-delay: 0.8s; }
+        .base-pair:nth-of-type(6) { animation-delay: 1.0s; }
+        .base-pair:nth-of-type(7) { animation-delay: 1.2s; }
+
+        @keyframes rotateLogo {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes pulseBasePair {
+            from { stroke: #4b5563; }
+            to { stroke: #60a5fa; }
+        }
+        
+        .credit-name::after {
+            content: '|';
+            color: #60a5fa;
+            margin-left: 3px;
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            from, to { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(5px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 50; opacity: 0; transition: opacity 0.3s ease-in-out; pointer-events: none;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content {
+            background-color: #1f2937; padding: 2rem; border-radius: 1rem;
+            border: 1px solid #4b5563; position: relative; transform: scale(0.95);
+            transition: transform 0.3s ease-in-out;
+        }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+        .modal-close {
+            position: absolute; top: 1rem; right: 1rem; font-size: 1.5rem;
+            color: #9ca3af; cursor: pointer; line-height: 1;
+        }
+        #qrcode { padding: 1rem; background: white; border-radius: 0.5rem; }
+        #qrcode img { border-radius: 0.25rem; }
+
+        /* --- Login/Register Page Styles --- */
+        .form-container {
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+            height: 420px; /* Adjust height as needed */
+        }
+        .form-wrapper {
+            display: flex;
+            width: 200%;
+            transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+        .form-section {
+            width: 50%;
+            padding: 0 1rem;
+        }
+        .form-wrapper.show-register {
+            transform: translateX(-50%);
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body class="text-gray-200">
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- Login/Register Page -->
+    <div id="auth-page" class="content-wrapper min-h-screen flex flex-col items-center justify-center p-4 fade-in">
+        <div class="w-full max-w-md card rounded-2xl shadow-2xl p-6 sm:p-8">
+             <div class="text-center mb-6">
+                <svg class="w-16 h-16 mb-3 mx-auto helix-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <defs><linearGradient id="helixGradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#60a5fa; stop-opacity:1" /><stop offset="100%" style="stop-color:#93c5fd; stop-opacity:1" /></linearGradient></defs>
+                    <g><path d="M 30,10 C 10,30 10,70 30,90" stroke="url(#helixGradient)" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M 70,10 C 90,30 90,70 70,90" stroke="url(#helixGradient)" stroke-width="5" fill="none" stroke-linecap="round"/><line class="base-pair" x1="33" y1="20" x2="67" y2="20" stroke="#4b5563" stroke-width="3.5" stroke-linecap="round"/><line class="base-pair" x1="30" y1="30" x2="70" y2="30" stroke="#4b5563" stroke-width="3.5" stroke-linecap="round"/><line class="base-pair" x1="28" y1="40" x2="72" y2="40" stroke="#4b5563" stroke-width="3.5" stroke-linecap="round"/><line class="base-pair" x1="28" y1="50" x2="72" y2="50" stroke="#4b5563" stroke-width="3.5" stroke-linecap="round"/><line class="base-pair" x1="28" y1="60" x2="72" y2="60" stroke="#4b5563" stroke-width="3.5" stroke-linecap="round"/><line class="base-pair" x1="30" y1="70" x2="70" y2="70" stroke="#4b5563" stroke-width="3.5" stroke-linecap="round"/><line class="base-pair" x1="33" y1="80" x2="67" y2="80" stroke="#4b5563" stroke-width="3.5" stroke-linecap="round"/></g>
+                </svg>
+                <h1 class="text-3xl sm:text-4xl font-bold text-white">Welcome to HelixAI</h1>
+            </div>
+
+            <div class="form-container">
+                <div id="form-wrapper" class="form-wrapper">
+                    <!-- Login Form -->
+                    <div class="form-section">
+                        <h2 class="text-xl font-semibold text-center text-white mb-4">Login</h2>
+                        <form id="login-form" class="space-y-4">
+                            <input type="email" placeholder="Email" class="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <input type="password" placeholder="Password" class="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Login</button>
+                        </form>
+                        <p class="text-center text-sm text-gray-400 mt-6">
+                            Don't have an account? <a href="#" id="show-register-link" class="font-medium text-blue-400 hover:underline">Register</a>
+                        </p>
+                    </div>
+                    <!-- Register Form -->
+                    <div class="form-section">
+                        <h2 class="text-xl font-semibold text-center text-white mb-4">Register</h2>
+                        <form id="register-form" class="space-y-4">
+                            <input type="text" placeholder="Full Name" class="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <input type="email" placeholder="Email" class="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <input type="password" placeholder="Password" class="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Create Account</button>
+                        </form>
+                        <p class="text-center text-sm text-gray-400 mt-6">
+                            Already have an account? <a href="#" id="show-login-link" class="font-medium text-blue-400 hover:underline">Login</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application Page (Initially Hidden) -->
+    <div id="main-app" class="hidden">
+        <div class="content-wrapper container mx-auto p-4 sm:p-6 lg:p-8 min-h-screen flex flex-col items-center justify-center">
+            <div class="w-full max-w-4xl card rounded-2xl shadow-2xl p-6 sm:p-8">
+                <div class="text-center mb-6">
+                    <h1 class="text-3xl sm:text-4xl font-bold text-white">HelixAI</h1>
+                    <p class="text-gray-400 mt-2">AI-Powered FASTA Parser & Bio-Tools</p>
+                </div>
+                <div class="mb-6">
+                    <label for="fastaFile" class="block text-sm font-medium text-gray-300 mb-2">Upload FASTA File (.fasta, .fa)</label>
+                    <div class="flex items-center justify-center w-full">
+                        <label for="fastaFile" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-700/50 hover:bg-gray-700 transition-colors">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <svg class="w-8 h-8 mb-4 text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/></svg>
+                                <p class="mb-2 text-sm text-gray-400"><span class="font-semibold text-blue-400">Click to upload</span> or drag and drop</p>
+                                <p id="fileName" class="text-xs text-gray-500">No file selected</p>
+                            </div>
+                            <input id="fastaFile" type="file" class="hidden" accept=".fasta,.fa,.txt">
+                        </label>
+                    </div>
+                </div>
+                <div id="messageArea" class="hidden p-3 mb-4 text-sm text-center rounded-lg" role="alert"></div>
+                <div id="comparisonSection" class="hidden my-6">
+                    <h2 class="text-xl font-semibold text-white mb-3">✨ AI Sequence Comparison</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <select id="seq1-select" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"></select>
+                        <div class="text-center"><button onclick="runComparison()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center justify-center w-full md:w-auto">Compare</button></div>
+                        <select id="seq2-select" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"></select>
+                    </div>
+                    <div id="comparison-result" class="mt-4 text-gray-300 text-sm" style="display: none;"></div>
+                </div>
+                <div id="resultsSection" class="hidden space-y-6">
+                    <h2 class="text-2xl font-semibold text-white border-b-2 border-gray-700 pb-2">Parsed Sequences</h2>
+                    <div id="sequencesContainer" class="space-y-4 max-h-[40vh] overflow-y-auto pr-2"></div>
+                </div>
+            </div>
+            <footer class="text-center mt-8 w-full max-w-4xl">
+                <div class="flex justify-center items-center gap-4 mb-4">
+                    <img src="https://www.mgmccsit.ac.in/images/logo.png" alt="MGM College Logo" class="h-12" onerror="this.style.display='none'">
+                    <div>
+                        <p class="text-gray-400">A Skill Enhancement Project Competition Entry</p>
+                        <p class="text-gray-300 font-semibold">MGM's College of CS and IT, Nanded</p>
+                    </div>
+                </div>
+                <div class="text-gray-500 text-md credit-container mb-4">
+                    <span class="credit-text">Created by: </span>
+                    <span class="credit-name text-gray-400 font-medium" id="creator-name"></span>
+                </div>
+                <button id="share-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center justify-center mx-auto">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z"></path></svg>
+                    Share App
+                </button>
+            </footer>
+        </div>
+    </div>
+
+    <div id="qr-modal" class="modal-overlay">
+        <div class="modal-content text-center">
+            <span class="modal-close" id="modal-close-btn">&times;</span>
+            <h3 class="text-xl font-bold text-white mb-4">Scan to Open on Your Device</h3>
+            <div id="qrcode"></div>
+            <p class="text-gray-400 mt-4 break-all" id="qr-url"></p>
+        </div>
+    </div>
+
+    <script>
+        // --- Page Switching Logic ---
+        const authPage = document.getElementById('auth-page');
+        const mainAppPage = document.getElementById('main-app');
+        const formWrapper = document.getElementById('form-wrapper');
+        const showRegisterLink = document.getElementById('show-register-link');
+        const showLoginLink = document.getElementById('show-login-link');
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+
+        showRegisterLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            formWrapper.classList.add('show-register');
+        });
+
+        showLoginLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            formWrapper.classList.remove('show-register');
+        });
+
+        function showMainApp() {
+            authPage.classList.add('fade-out');
+            setTimeout(() => {
+                authPage.style.display = 'none';
+                mainAppPage.classList.remove('hidden');
+                mainAppPage.classList.add('fade-in');
+                document.body.style.overflow = 'auto'; // Restore scroll
+            }, 800);
+        }
+
+        // Placeholder for login/register submission
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            showMainApp();
+        });
+
+        registerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            showMainApp();
+        });
+
+        // --- Main Application Logic ---
+        const fileInput = document.getElementById('fastaFile');
+        const fileNameDisplay = document.getElementById('fileName');
+        const messageArea = document.getElementById('messageArea');
+        const resultsSection = document.getElementById('resultsSection');
+        const sequencesContainer = document.getElementById('sequencesContainer');
+        const comparisonSection = document.getElementById('comparisonSection');
+        const seq1Select = document.getElementById('seq1-select');
+        const seq2Select = document.getElementById('seq2-select');
+        const comparisonResultDiv = document.getElementById('comparison-result');
+        
+        let parsedSequences = [];
+
+        fileInput.addEventListener('change', handleFileSelect);
+
+        window.addEventListener('click', function(e) {
+            document.querySelectorAll('[id^="menu-button-"]').forEach(button => {
+                const menu = document.getElementById(button.id.replace('button', 'items'));
+                if (menu && !button.contains(e.target) && !menu.contains(e.target)) {
+                    menu.classList.add('hidden');
+                }
+            });
+        });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            fileNameDisplay.textContent = file.name;
+            showMessage('Parsing file...', 'info');
+            parseFastaFile(file);
+        }
+
+        function parseFastaFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const content = e.target.result;
+                    const sequences = [];
+                    const lines = content.split(/\r?\n/);
+                    let currentSequence = null;
+
+                    lines.forEach(line => {
+                        if (line.startsWith('>')) {
+                            if (currentSequence) sequences.push(currentSequence);
+                            currentSequence = { header: line.substring(1).trim(), sequence: '' };
+                        } else if (currentSequence && line.trim() !== '') {
+                            currentSequence.sequence += line.trim().toUpperCase();
+                        }
+                    });
+                    if (currentSequence) sequences.push(currentSequence);
+
+                    if (sequences.length === 0) throw new Error("No valid FASTA sequences found.");
+                    
+                    parsedSequences = sequences;
+                    displayResults();
+                    populateComparisonDropdowns();
+                    showMessage(`Successfully parsed ${sequences.length} sequence(s).`, 'success');
+                } catch (error) {
+                    console.error("Parsing Error:", error);
+                    showMessage(`Error: ${error.message}`, 'error');
+                    resultsSection.classList.add('hidden');
+                    comparisonSection.classList.add('hidden');
+                }
+            };
+            reader.onerror = () => {
+                showMessage('Error reading file.', 'error');
+                resultsSection.classList.add('hidden');
+            };
+            reader.readAsText(file);
+        }
+
+        function displayResults() {
+            sequencesContainer.innerHTML = '';
+            if (parsedSequences.length > 0) {
+                resultsSection.classList.remove('hidden');
+            } else {
+                resultsSection.classList.add('hidden');
+                return;
+            }
+
+            parsedSequences.forEach((seq, index) => {
+                const seqId = `seq-card-${index}`;
+                const card = document.createElement('div');
+                card.id = seqId;
+                card.className = 'p-4 bg-gray-900/50 rounded-lg border border-gray-700 transition-all duration-300';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start gap-4">
+                        <div>
+                            <h3 class="font-semibold text-lg text-blue-300">${seq.header.split(' ')[0]}</h3>
+                            <p class="text-sm text-gray-400">${seq.header.substring(seq.header.indexOf(' ') + 1)}</p>
+                            <p class="text-xs text-gray-500 mt-1">Length: ${seq.sequence.length} bp</p>
+                        </div>
+                        <div class="relative inline-block text-left">
+                            <button type="button" onclick="toggleDropdown(${index})" id="menu-button-${index}" class="ai-tools-btn inline-flex justify-center w-full rounded-md border border-gray-600 shadow-sm px-4 py-2 bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none">
+                                ✨ AI Tools
+                                <svg class="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                            </button>
+                            <div id="menu-items-${index}" class="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-20 hidden" role="menu">
+                                <div class="py-1" role="none">
+                                    <a href="#" onclick="event.preventDefault(); runAiTool(${index}, 'summary')" class="text-gray-300 block px-4 py-2 text-sm hover:bg-gray-600" role="menuitem">Analyze Sequence</a>
+                                    <a href="#" onclick="event.preventDefault(); runAiTool(${index}, 'orf')" class="text-gray-300 block px-4 py-2 text-sm hover:bg-gray-600" role="menuitem">Find Longest ORF</a>
+                                    <a href="#" onclick="event.preventDefault(); runAiTool(${index}, 'primers')" class="text-gray-300 block px-4 py-2 text-sm hover:bg-gray-600" role="menuitem">Design PCR Primers</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="analysis-result mt-4 text-gray-300 text-sm" style="display: none;"></div>
+                `;
+                sequencesContainer.appendChild(card);
+            });
+        }
+
+        function toggleDropdown(index) {
+            const menu = document.getElementById(`menu-items-${index}`);
+            menu.classList.toggle('hidden');
+        }
+        
+        function populateComparisonDropdowns() {
+            if (parsedSequences.length > 1) {
+                comparisonSection.classList.remove('hidden');
+                seq1Select.innerHTML = '';
+                seq2Select.innerHTML = '';
+                parsedSequences.forEach((seq, index) => {
+                    const option = `<option value="${index}">${seq.header.split(' ')[0]}</option>`;
+                    seq1Select.innerHTML += option;
+                    seq2Select.innerHTML += option;
+                });
+                if (parsedSequences.length > 1) {
+                    seq2Select.selectedIndex = 1;
+                }
+            } else {
+                comparisonSection.classList.add('hidden');
+            }
+        }
+
+        async function runAiTool(index, tool) {
+            const sequence = parsedSequences[index];
+            const card = document.getElementById(`seq-card-${index}`);
+            const resultDiv = card.querySelector('.analysis-result');
+            const toolBtn = card.querySelector('.ai-tools-btn');
+
+            toolBtn.disabled = true;
+            toolBtn.innerHTML = '<div class="spinner mx-auto"></div>';
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<p class="text-center text-gray-400">Communicating with AI model...</p>';
+            
+            toggleDropdown(index);
+
+            try {
+                let htmlResult = '';
+                if (tool === 'summary') {
+                    const summary = await callGeminiAPI(`Provide a brief, high-level biological summary for the following genetic sequence. Infer if it's likely DNA, RNA, or protein, and suggest its potential function or origin in 2-3 sentences. Sequence: ${sequence.sequence.substring(0, 2000)}`);
+                    htmlResult = `<p class="font-semibold text-blue-200 mb-1">AI Analysis:</p><p>${summary.replace(/\n/g, '<br>')}</p>`;
+                } else if (tool === 'orf') {
+                    const prompt = `Act as a bioinformatician. For the following DNA sequence, find the longest Open Reading Frame (ORF) starting with an ATG codon and ending with TAA, TAG, or TGA. Provide the result as a JSON object with keys "start" (1-based index), "end" (1-based index), "length_bp", "protein_sequence", and "status" ('found' or 'not_found'). If no valid ORF is found, set status to 'not_found' and other values to null. Sequence: ${sequence.sequence.substring(0, 2000)}`;
+                    const orfResult = await callGeminiAPI(prompt, true);
+                    if (orfResult.status === 'found') {
+                        htmlResult = `<p class="font-semibold text-blue-200 mb-2">Longest ORF Found:</p>
+                                      <ul class="list-disc list-inside space-y-1">
+                                        <li><strong>Position:</strong> ${orfResult.start} - ${orfResult.end}</li>
+                                        <li><strong>Length:</strong> ${orfResult.length_bp} bp</li>
+                                        <li class="break-all"><strong>Protein:</strong> ${orfResult.protein_sequence}</li>
+                                      </ul>`;
+                    } else {
+                        htmlResult = `<p class="font-semibold text-yellow-300">No valid ORF found in the sequence.</p>`;
+                    }
+                } else if (tool === 'primers') {
+                    const prompt = `Act as a molecular biologist. Design a pair of PCR primers for the following DNA sequence. The primers should be 18-22 base pairs long, have a GC content between 40-60%, and a melting temperature (Tm) around 55-65°C. Provide the result as a JSON object with keys "forward_primer": {"sequence": "...", "tm": ...}, "reverse_primer": {"sequence": "...", "tm": ...}, and "status" ('designed' or 'failed'). Sequence: ${sequence.sequence.substring(0, 2000)}`;
+                    const primerResult = await callGeminiAPI(prompt, true);
+                    if (primerResult.status === 'designed') {
+                         htmlResult = `<p class="font-semibold text-blue-200 mb-2">Suggested PCR Primers:</p>
+                                      <div class="space-y-2">
+                                        <p><strong>Forward:</strong> 5'-${primerResult.forward_primer.sequence}-3' (Tm: ${primerResult.forward_primer.tm}°C)</p>
+                                        <p><strong>Reverse:</strong> 5'-${primerResult.reverse_primer.sequence}-3' (Tm: ${primerResult.reverse_primer.tm}°C)</p>
+                                      </div>`;
+                    } else {
+                         htmlResult = `<p class="font-semibold text-yellow-300">Could not design suitable primers for this sequence.</p>`;
+                    }
+                }
+                resultDiv.innerHTML = htmlResult;
+            } catch (error) {
+                console.error('AI Tool Error:', error);
+                resultDiv.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
+            } finally {
+                toolBtn.disabled = false;
+                toolBtn.innerHTML = `✨ AI Tools <svg class="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+            }
+        }
+        
+        async function runComparison() {
+            const index1 = seq1Select.value;
+            const index2 = seq2Select.value;
+            if (index1 === index2) {
+                showMessage("Please select two different sequences to compare.", "error");
+                return;
+            }
+            const seq1 = parsedSequences[index1];
+            const seq2 = parsedSequences[index2];
+            
+            comparisonResultDiv.style.display = 'block';
+            comparisonResultDiv.innerHTML = '<p class="text-center text-gray-400">AI is comparing the sequences...</p>';
+            
+            const prompt = `Compare the following two biological sequences. Based on their headers and sequence data, provide a brief, high-level comparison in 3-4 sentences. Mention their likely types (DNA, RNA, protein) and speculate on whether their functions might be related.
+            Sequence 1 Header: ${seq1.header}
+            Sequence 1 Data: ${seq1.sequence.substring(0, 500)}
+            
+            Sequence 2 Header: ${seq2.header}
+            Sequence 2 Data: ${seq2.sequence.substring(0, 500)}`;
+            
+            try {
+                const summary = await callGeminiAPI(prompt);
+                comparisonResultDiv.innerHTML = `<p class="font-semibold text-blue-200 mb-1">AI Comparison:</p><p>${summary.replace(/\n/g, '<br>')}</p>`;
+            } catch (error) {
+                 console.error('AI Comparison Error:', error);
+                 comparisonResultDiv.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
+            }
+        }
+
+        async function callGeminiAPI(prompt, expectJson = false) {
+            const apiKey = ""; // API key will be injected by the environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            const payload = { contents: [{ parts: [{ text: prompt }] }] };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0]) {
+                const textResponse = result.candidates[0].content.parts[0].text;
+                if (expectJson) {
+                    try {
+                        const cleanJsonString = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                        return JSON.parse(cleanJsonString);
+                    } catch (e) {
+                        console.error("Failed to parse JSON from AI response:", textResponse);
+                        throw new Error("AI returned a non-JSON response when one was expected.");
+                    }
+                }
+                return textResponse;
+            } else {
+                if (result.promptFeedback && result.promptFeedback.blockReason) {
+                     throw new Error(`Request blocked: ${result.promptFeedback.blockReason}`);
+                }
+                throw new Error("Invalid response structure from AI model.");
+            }
+        }
+
+        function showMessage(text, type = 'info') {
+            messageArea.textContent = text;
+            messageArea.className = 'p-3 mb-4 text-sm text-center rounded-lg';
+            
+            let colorClasses = 'bg-blue-900 text-blue-200';
+            if (type === 'success') colorClasses = 'bg-green-900 text-green-200';
+            else if (type === 'error') colorClasses = 'bg-red-900 text-red-200';
+            
+            messageArea.classList.add(...colorClasses.split(' '));
+            
+            clearTimeout(messageArea.timeoutId);
+            messageArea.timeoutId = setTimeout(() => {
+                if (type !== 'error') messageArea.classList.add('hidden');
+            }, 4000);
+        }
+
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let particlesArray;
+
+        class Particle {
+            constructor(x, y, directionX, directionY, size, color) {
+                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; this.color = color;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+            update() {
+                if (this.x > canvas.width || this.x < 0) this.directionX = -this.directionX;
+                if (this.y > canvas.height || this.y < 0) this.directionY = -this.directionY;
+                this.x += this.directionX;
+                this.y += this.directionY;
+                this.draw();
+            }
+        }
+
+        function initParticles() {
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 9000;
+            for (let i = 0; i < numberOfParticles * 0.8; i++) {
+                let size = (Math.random() * 2) + 1;
+                let x = (Math.random() * (innerWidth - size * 2) + size * 2);
+                let y = (Math.random() * (innerHeight - size * 2) + size * 2);
+                let directionX = (Math.random() * .4) - .2;
+                let directionY = (Math.random() * .4) - .2;
+                let color = 'rgba(147, 197, 253, 0.6)';
+                particlesArray.push(new Particle(x, y, directionX, directionY, size, color));
+            }
+        }
+
+        function animateParticles() {
+            requestAnimationFrame(animateParticles);
+            ctx.clearRect(0, 0, innerWidth, innerHeight);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            connectParticles();
+        }
+
+        function connectParticles() {
+            let opacityValue = 1;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) ** 2) + ((particlesArray[a].y - particlesArray[b].y) ** 2);
+                    if (distance < (canvas.width / 8) * (canvas.height / 8)) {
+                        opacityValue = 1 - (distance / 20000);
+                        ctx.strokeStyle = `rgba(147, 197, 253, ${opacityValue * 0.5})`;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        const creatorNameEl = document.getElementById('creator-name');
+        const creators = ['Anjali Jadhav', 'Sapna Sonkamble'];
+        let creatorIndex = 0;
+        let charIndex = 0;
+        let isDeleting = false;
+
+        function typeCreatorName() {
+            const currentName = creators[creatorIndex];
+            let typeSpeed = 150;
+
+            if (isDeleting) {
+                creatorNameEl.textContent = currentName.substring(0, charIndex - 1);
+                charIndex--;
+                typeSpeed = 75;
+            } else {
+                creatorNameEl.textContent = currentName.substring(0, charIndex + 1);
+                charIndex++;
+            }
+
+            if (!isDeleting && charIndex === currentName.length) {
+                isDeleting = true;
+                typeSpeed = 2000;
+            } else if (isDeleting && charIndex === 0) {
+                isDeleting = false;
+                creatorIndex = (creatorIndex + 1) % creators.length;
+                typeSpeed = 500;
+            }
+            
+            setTimeout(typeCreatorName, typeSpeed);
+        }
+
+        const qrModal = document.getElementById('qr-modal');
+        const shareBtn = document.getElementById('share-btn');
+        const closeBtn = document.getElementById('modal-close-btn');
+        const qrcodeContainer = document.getElementById('qrcode');
+        const qrUrlEl = document.getElementById('qr-url');
+        let qrCodeGenerated = false;
+
+        shareBtn.addEventListener('click', () => {
+            qrModal.classList.add('active');
+            if (!qrCodeGenerated) {
+                const url = window.location.href;
+                qrUrlEl.textContent = url;
+                new QRCode(qrcodeContainer, {
+                    text: url,
+                    width: 200,
+                    height: 200,
+                    colorDark : "#e5e7eb",
+                    colorLight : "#1f2937",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+                qrCodeGenerated = true;
+            }
+        });
+
+        closeBtn.addEventListener('click', () => {
+            qrModal.classList.remove('active');
+        });
+
+        qrModal.addEventListener('click', (e) => {
+            if (e.target === qrModal) {
+                qrModal.classList.remove('active');
+            }
+        });
+
+        window.addEventListener('load', () => {
+            initParticles();
+            animateParticles();
+            typeCreatorName();
+        });
+        
+        window.addEventListener('resize', () => {
+            canvas.width = innerWidth;
+            canvas.height = innerHeight;
+            initParticles();
+        });
+    </script>
+</body>
+</html>
